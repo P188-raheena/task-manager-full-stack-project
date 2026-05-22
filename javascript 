@@ -1,0 +1,29 @@
+// server.js
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Connect to MongoDB
+mongoose.connect('mongodb://localhost:27017/taskdb');
+
+// Task Schema and Model
+const TaskSchema = new mongoose.Schema({ text: String, completed: Boolean });
+const Task = mongoose.model('Task', TaskSchema);
+
+// API Endpoints
+app.get('/tasks', async (req, res) => res.json(await Task.find()));
+
+app.post('/tasks', async (req, res) => {
+  const newTask = new Task({ text: req.body.text, completed: false });
+  res.json(await newTask.save());
+});
+
+app.delete('/tasks/:id', async (req, res) => {
+  res.json(await Task.findByIdAndDelete(req.params.id));
+});
+
+app.listen(5000, () => console.log('Server running on port 5000'));
