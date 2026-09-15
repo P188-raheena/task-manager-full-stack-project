@@ -1,100 +1,156 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 
 const app = express();
-app.use(bodyParser.json());
+const PORT = 5000;
+
+// Middleware
+app.use(express.json());
 app.use(cors());
 
 // MongoDB Connection
-mongoose.connect("mongodb://127.0.0.1:27017/taskdb")
-.then(() => console.log("MongoDB Connected"))
-.catch(err => console.log(err));
+mongoose
+  .connect("mongodb://127.0.0.1:27017/taskdb")
+  .then(() => console.log("MongoDB Connected"))
+  .catch((error) => console.log("MongoDB Error:", error.message));
 
-// Schema
-const TaskSchema = new mongoose.Schema({
-  title: String,
-  completed: Boolean
+// Task Schema
+const taskSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    completed: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+const Task = mongoose.model("Task", taskSchema);
+
+// Home Route
+app.get("/", (req, res) => {
+  res.send("Task Manager API is running 🚀");
 });
-
-const Task = mongoose.model("Task", TaskSchema);
-
-// ROUTES
 
 // Get all tasks
 app.get("/tasks", async (req, res) => {
-  const tasks = await Task.find();
-  res.json(tasks);
+  try {
+    const tasks = await Task.find().sort({ createdAt: -1 });
+    res.status(200).json(tasks);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch tasks" });
+  }
 });
 
 // Add task
 app.post("/tasks", async (req, res) => {
-  const task = new Task({
-    title: req.body.title,
-    completed: false
-  });
-  await task.save();
-  res.json(task);
+  try {
+    const { title } = req.body;
+
+    if (!title || title.trim() === "") {
+      return res.status(400).json({
+        message: "Task title is required",
+      });
+    }
+
+    const task = new Task({
+      title: title.trim(),
+      completed: false,
+    });
+
+    const savedTask = await task.save();
+
+    res.status(201).json(savedTask);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to add task",
+    });
+  }
+});
+
+// Update task
+app.put("/tasks/:id", async (req, res) => {
+  try {
+    const { title, completed } = req.body;
+
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      {
+        title,
+        completed,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
+
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to update task",
+    });
+  }
+});
+
+// Toggle completed status
+app.patch("/tasks/:id/toggle", async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
+
+    task.completed = !task.completed;
+    await task.save();
+
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to update task status",
+    });
+  }
 });
 
 // Delete task
 app.delete("/tasks/:id", async (req, res) => {
-  await Task.findByIdAndDelete(req.params.id);
-  res.json("Deleted");
-});
+  try {
+    const task = await Task.findByIdAndDelete(req.params.id);
 
-// Serve frontend
-app.get("/", (req, res) => {
-  res.send(`
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>Task Manager</title>
-  </head>
-  <body>
-    <h2>🚀 Task Manager</h2>
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
 
-    <input id="task" placeholder="Enter task">
-    <button onclick="addTask()">Add</button>
-
-    <ul id="list"></ul>
-
-    <script>
-      async function loadTasks(){
-        const res = await fetch('/tasks');
-        const data = await res.json();
-
-        list.innerHTML = "";
-        data.forEach(t => {
-          const li = document.createElement('li');
-          li.innerHTML = t.title + 
-            " <button onclick='deleteTask(\""+t._id+"\")'>❌</button>";
-          list.appendChild(li);
-        });
-      }
-
-      async function addTask(){
-        await fetch('/tasks',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({title:task.value})
-        });
-        task.value = "";
-        loadTasks();
-      }
-
-      async function deleteTask(id){
-        await fetch('/tasks/'+id,{method:'DELETE'});
-        loadTasks();
-      }
-
-      loadTasks();
-    </script>
-  </body>
-  </html>
-  `);
+    res.status(200).json({
+      message: "Task deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to delete task",
+    });
+  }
 });
 
 // Start server
-app.listen(5000, () => console.log("Server running on http://localhost:5000"));
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
